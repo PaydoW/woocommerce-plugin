@@ -4,7 +4,7 @@ Plugin Name: PayDo
 Plugin URI: https://wordpress.org/plugins/paydo-woocommerce/
 Description: PayDo: Online payment processing service ➦ Accept payments online by 150+ methods from 170+ countries. Payments gateway for Growing Your Business in New Locations and fast online payments
 Author URI: https://paydo.com/
-Version: 1.0.0
+Version: 1.0.1
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 Domain Path: /languages
@@ -18,7 +18,7 @@ if(!defined('ABSPATH')){
 add_action('plugins_loaded', 'woocommerce_paydo', 0);
 
 /**
- *
+ * PayDo woocommerce.
  */
 function woocommerce_paydo()
 {
@@ -31,19 +31,22 @@ function woocommerce_paydo()
         return;
     }
 
+    /**
+     * Class WC_Paydo.
+     */
     class WC_Paydo extends WC_Payment_Gateway
     {
-
+        /**
+         * WC_Paydo constructor.
+         */
         public function __construct()
         {
             global $woocommerce;
-
             $plugin_dir = plugin_dir_url(__FILE__);
-
             $this->apiUrl = 'https://paydo.com/v1/invoices/create';
-
             $this->id = 'paydo';
             $this->icon = apply_filters('woocommerce_paydo_icon', '' . $plugin_dir . 'paydo.png');
+
             // Load the settings
             $this->init_form_fields();
             $this->init_settings();
@@ -77,7 +80,9 @@ function woocommerce_paydo()
         }
 
         /**
-         * Check if this gateway is enabled and available in the user's country
+         * Check if this gateway is enabled and available in the user's country.
+         *
+         * @return bool
          */
         public function is_valid_for_use()
         {
@@ -89,7 +94,7 @@ function woocommerce_paydo()
          * - Options for bits like 'title' and availability on a country-by-country basis
          *
          * @since 0.1
-         **/
+         */
         public function admin_options()
         {
             global $woocommerce;
@@ -125,12 +130,9 @@ function woocommerce_paydo()
          * @access public
          * @return void
          */
-
         public function init_form_fields()
         {
-
             global $woocommerce;
-
             $this->form_fields = array(
                 'enabled' => array(
                     'title' => __('Enable PayDo payments', 'paydo-woocommerce'),
@@ -214,10 +216,10 @@ The unavailability of the payment method or not all submitted fields can make pa
                 ),
             );
         }
-//
+
         /**
-         * Дополнительная информация в форме выбора способа оплаты
-         **/
+         * Payment form additional information
+         */
         public function payment_fields()
         {
             if ($this->description) {
@@ -227,7 +229,7 @@ The unavailability of the payment method or not all submitted fields can make pa
 
         /**
          * Select payment methods
-         **/
+         */
         private function get_payments_methods_options( $default )
         {
             $request_url = 'https://paydo.com/v1/instrument-settings/payment-methods/available-for-user';
@@ -264,10 +266,15 @@ The unavailability of the payment method or not all submitted fields can make pa
 
         }
 
-        public function generate_form( $order_id )
+        /**
+         * Generate form.
+         *
+         * @param $order_id
+         * @return string
+         */
+        public function generate_form($order_id)
         {
             global $woocommerce;
-
             $order = new WC_Order($order_id);
 
             $out_summ = number_format($order->get_total(), 4, '.', '');
@@ -329,7 +336,13 @@ The unavailability of the payment method or not all submitted fields can make pa
                 '</form>';
         }
 
-        public function process_payment( $order_id )
+        /**
+         * Process payment.
+         *
+         * @param $order_id
+         * @return array
+         */
+        public function process_payment($order_id)
         {
             $order = new WC_Order($order_id);
             $order_key = $order->get_order_key();
@@ -341,7 +354,12 @@ The unavailability of the payment method or not all submitted fields can make pa
             ];
         }
 
-        public function receipt_page( $order )
+        /**
+         * Receipt page.
+         *
+         * @param $order
+         */
+        public function receipt_page($order)
         {
             echo '<p>' . __('Thank you for your order, please click the button below to pay', 'paydo-woocommerce') . '</p>';
 
@@ -355,7 +373,7 @@ The unavailability of the payment method or not all submitted fields can make pa
          *
          * @return bool|string
          */
-        public function check_ipn_request_is_valid( $posted )
+        public function check_ipn_request_is_valid($posted)
         {
             $invoiceId = !empty($posted['invoice']['id']) ? $posted['invoice']['id'] : null;
             $txId = !empty($posted['invoice']['txid']) ? $posted['invoice']['txid'] : null;
@@ -415,8 +433,8 @@ The unavailability of the payment method or not all submitted fields can make pa
         }
 
         /**
-         * Check Response
-         **/
+         * Check ipn response.
+         */
         public function check_ipn_response()
         {
             global $woocommerce;
@@ -498,7 +516,12 @@ The unavailability of the payment method or not all submitted fields can make pa
             }
         }
 
-        public function successful_request( $posted )
+        /**
+         * Successful request.
+         *
+         * @param $posted
+         */
+        public function successful_request($posted)
         {
             global $woocommerce;
 
@@ -519,7 +542,14 @@ The unavailability of the payment method or not all submitted fields can make pa
             exit;
         }
 
-        public function apiRequest( $arrData = [], $retrieved_header)
+        /**
+         * Api request.
+         *
+         * @param array $arrData
+         * @param $retrieved_header
+         * @return mixed
+         */
+        public function apiRequest($arrData = [], $retrieved_header)
         {
 
             $request_url = $this->apiUrl;
@@ -544,10 +574,14 @@ The unavailability of the payment method or not all submitted fields can make pa
         }
 
     }
+
     /**
-     * Add the gateway to WooCommerce
-     **/
-    function add_paydo_gateway( $methods )
+     * Add the gateway to WooCommerce.
+     *
+     * @param $methods
+     * @return mixed
+     */
+    function add_paydo_gateway($methods)
     {
         $methods[] = 'WC_Paydo';
 
@@ -568,5 +602,4 @@ The unavailability of the payment method or not all submitted fields can make pa
             '">' . __('Settings') . '</a>';
         return $links;
     }
-
 }
