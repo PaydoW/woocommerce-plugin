@@ -1,0 +1,165 @@
+# Copyright (C) 2025 
+# This file is distributed under the GPLv2 or later.
+msgid ""
+msgstr ""
+"Project-Id-Version: PayDo WooCommerce Payment Gateway 2.0.0\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/paydo-woocommerce-plugin\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2025-03-13T11:53:48+02:00\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"X-Generator: WP-CLI 2.6.0\n"
+"X-Domain: paydo-woocommerce\n"
+
+#. Plugin Name of the plugin
+msgid "PayDo WooCommerce Payment Gateway"
+msgstr ""
+
+#. Plugin URI of the plugin
+msgid "https://github.com/PaydoW/woocommerce-plugin"
+msgstr ""
+
+#. Description of the plugin
+msgid "PayDo: Online payment processing service ➦ Accept payments online by 150+ methods from 170+ countries. Payments gateway for Growing Your Business in New Locations and fast online payments"
+msgstr ""
+
+#. Author URI of the plugin
+msgid "https://paydo.com/"
+msgstr ""
+
+#: includes/class-wc-gateway-paydo.php:125
+msgid "Thank you for your order, please click the button below to pay"
+msgstr ""
+
+#: includes/class-wc-gateway-paydo.php:187
+msgid "Payment order #"
+msgstr ""
+
+#: includes/class-wc-gateway-paydo.php:208
+msgid "Request to payment service was sent incorrectly"
+msgstr ""
+
+#: includes/class-wc-gateway-paydo.php:241
+msgid "Pay"
+msgstr ""
+
+#: includes/class-wc-gateway-paydo.php:242
+msgid "Refuse payment & return to cart"
+msgstr ""
+
+#: includes/class-wc-gateway-paydo.php:321
+msgid "Transaction status updated"
+msgstr ""
+
+#: includes/class-wc-gateway-paydo.php:335
+msgid "Transaction pending"
+msgstr ""
+
+#: includes/class-wc-gateway-paydo.php:341
+#: includes/class-wc-gateway-paydo.php:343
+msgid "Payment successfully paid"
+msgstr ""
+
+#: includes/class-wc-gateway-paydo.php:349
+#: includes/class-wc-gateway-paydo.php:405
+msgid "Payment not paid"
+msgstr ""
+
+#: includes/class-wc-gateway-paydo.php:376
+msgid "Payment pre-approved by provider"
+msgstr ""
+
+#: includes/class-wc-gateway-paydo.php:386
+msgid "Order awaiting payment confirmation"
+msgstr ""
+
+#: includes/class-wc-gateway-paydo.php:546
+msgid "Payment completed successfully"
+msgstr ""
+
+#: includes/class-wc-gateway-paydo.php:603
+#: js/paydo-blocks-integration.js:5
+msgid "Paydo"
+msgstr ""
+
+#: includes/class-wc-gateway-paydo.php:604
+msgid "Take payments via Paydo."
+msgstr ""
+
+#: includes/class-wc-payment-plugin.php:49
+#: includes/class-wc-payment-plugin.php:55
+#: includes/class-wc-payment-plugin.php:67
+msgid "The \""
+msgstr ""
+
+#: includes/class-wc-payment-plugin.php:61
+msgid "For the correct operation of the \""
+msgstr ""
+
+#: includes/class-wc-payment-plugin.php:130
+msgid "Settings"
+msgstr ""
+
+#: includes/settings-paydo.php:14
+msgid "Enable PayDo payments"
+msgstr ""
+
+#: includes/settings-paydo.php:16
+msgid "Enable/Disable"
+msgstr ""
+
+#: includes/settings-paydo.php:20
+msgid "Name of payment gateway"
+msgstr ""
+
+#: includes/settings-paydo.php:22
+msgid "The name of the payment gateway that the user see when placing the order"
+msgstr ""
+
+#: includes/settings-paydo.php:23
+msgid "PayDo"
+msgstr ""
+
+#: includes/settings-paydo.php:26
+msgid "Public key"
+msgstr ""
+
+#: includes/settings-paydo.php:28
+#: includes/settings-paydo.php:34
+msgid "Issued in the client panel https://paydo.com"
+msgstr ""
+
+#: includes/settings-paydo.php:32
+msgid "Secret key"
+msgstr ""
+
+#: includes/settings-paydo.php:38
+msgid "Description"
+msgstr ""
+
+#: includes/settings-paydo.php:40
+msgid "Description of the payment gateway that the client will see on your site."
+msgstr ""
+
+#: includes/settings-paydo.php:44
+msgid "Accept online payments using PayDo.com"
+msgstr ""
+
+#: includes/settings-paydo.php:47
+msgid "Order completion"
+msgstr ""
+
+#: includes/settings-paydo.php:49
+msgid "Automatic transfer of the order to the status \"Completed\" after successful payment"
+msgstr ""
+
+#: includes/settings-paydo.php:57
+msgid "Skip confirmation"
+msgstr ""
+
+#: includes/settings-paydo.php:59
+msgid "Skip page checkout confirmation"
+msgstr ""
