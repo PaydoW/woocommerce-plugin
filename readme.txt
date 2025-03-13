@@ -1,9 +1,12 @@
 ﻿=== PayDo Official ===
 Tags: credit cards, payment methods, paydo, payment gateway
-Requires at least: 5.0
-Tested up to: 5.3
-Requires PHP: 5.4.45
-Stable tag: 1.0.0
+Version: 2.0.0
+Stable tag: 2.0.0
+Requires at least: 6.3
+Tested up to: 6.7.2
+Requires PHP: 7.4
+WC requires at least: 8.3
+WC tested up to: 9.7.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -22,7 +25,7 @@ What this module does for you:
 
 == Installation ==
 
-Note: WooCommerce 3.0+ must be installed for this plugin to work.
+Note: WooCommerce 8.3+ must be installed for this plugin to work.
 
 1. Log in to your WordPress dashboard, navigate to the Plugins menu and click "Add New" button
 2. Click "Upload Plugin" button and choose release archive
@@ -32,7 +35,7 @@ Note: WooCommerce 3.0+ must be installed for this plugin to work.
 6. Click on the sub-item for PayDo.
 7. Configure and save your settings accordingly.
 
-You can issue  **Public key**, **Secret key** and **JWT Token** after register as merchant on PayDo.com.
+You can issue  **Public key**, **Secret key** after register as merchant on PayDo.com.
 
 Use below parameters to configure your PayDo project:
 * **Callback/IPN URL**: https://{replace-with-your-domain}/?wc-api=wc_paydo&paydo=result
@@ -55,6 +58,16 @@ Use below parameters to configure your PayDo project:
 
 == Changelog ==
 
-= 1.0.0 =
-* 2020-03-02
+= 1.0.0 = (March 2, 2020)
 * Initialization
+
+= 2.0.0 = (March 13, 2025)
+* Added: WordPress 6.7.x Compatibility
+* Added: WooCommerce 9.7.x Compatibility
+* Added: Support for High-Performance Order Storage (HPOS)
+* Added: Support for WooCommerce Checkout Blocks (Gutenberg)
+* Added: Failed Order page
+* Improved: General plugin performance and stability
+* Fixed: Error stating "No payment methods available"
+* Fixed: Bug related to reordering
+

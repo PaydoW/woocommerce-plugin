@@ -7,7 +7,9 @@ Add the ability to accept payments in WooCommerce via Paydo.com.
 
 ## Requirements
 
--  WooCommerce 3.0+
+- PHP 7.4+
+- Wordpress 6.3+
+- WooCommerce 8.3+
 
 
 ## Installation
