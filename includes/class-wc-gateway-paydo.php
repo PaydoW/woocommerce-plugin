@@ -3,7 +3,7 @@
  * WooCommerce Paydo Payment Gateway.
  *
  * @extends WC_Payment_Gateway
- * @version 1.0.0
+ * @version 1.0.1
  */
 
 if (!defined('ABSPATH')) {
@@ -448,12 +448,9 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 	{
 		$order = wc_get_order( $order_id );
 
-		$this->empty_cart();
-
-		// Return thankyou redirect.
 		return [
 			'result'   => 'success',
-			'redirect' => $this->get_return_url( $order ),
+			'redirect' => $order->get_checkout_payment_url( true ),
 		];
 	}
 

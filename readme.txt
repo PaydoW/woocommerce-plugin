@@ -1,12 +1,12 @@
 ﻿=== PayDo Official ===
 Tags: credit cards, payment methods, paydo, payment gateway
-Version: 2.0.0
-Stable tag: 2.0.0
+Version: 2.1.0
+Stable tag: 2.1.0
 Requires at least: 6.3
-Tested up to: 6.7.2
+Tested up to: 6.8.2
 Requires PHP: 7.4
 WC requires at least: 8.3
-WC tested up to: 9.7.1
+WC tested up to: 10.0.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -71,3 +71,7 @@ Use below parameters to configure your PayDo project:
 * Fixed: Error stating "No payment methods available"
 * Fixed: Bug related to reordering
 
+= 2.1.0 = (August 4, 2025)
+* Added: WordPress 6.8.x Compatibility
+* Added: WooCommerce 10.x.x Compatibility
+* Fixed: Improved behavior when navigating back from the payment page — users are now correctly redirected to the WooCommerce checkout instead of encountering a broken or expired order page.
