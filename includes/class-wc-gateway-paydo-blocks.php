@@ -1,10 +1,13 @@
 <?php
 /**
- * WooCommerce Paydo Payment Gateway Block.
+ * WooCommerce PayDo Payment Gateway – Blocks integration.
+ *
+ * Registers PayDo as a payment method for WooCommerce Checkout Blocks
+ * and passes additional data (methods, mode, descriptions) to JS.
  *
  * @final
  * @extends AbstractPaymentMethodType
- * @version 1.0.0
+ * @version 1.1.0
  */
 
 if (!defined('ABSPATH')) {
@@ -16,41 +19,63 @@ use Automattic\WooCommerce\Blocks\Payments\Integrations\AbstractPaymentMethodTyp
 final class WC_Gateway_Paydo_Blocks extends AbstractPaymentMethodType {
 
 	/**
-	 * @var WC_Gateway_Paydo The Paydo payment gateway instance.
-	 */
-	private $gateway;
-
-	/**
-	 * @var string The name of the payment gateway.
+	 * Payment method name (must match gateway ID).
+	 *
+	 * @var string
 	 */
 	protected $name = PAYDO_PAYMENT_GATEWAY_NAME;
 
 	/**
-	 * Initialize the Paydo payment gateway block.
+	 * PayDo gateway instance from WooCommerce.
+	 *
+	 * IMPORTANT:
+	 * We do NOT create a new WC_Gateway_Paydo instance here,
+	 * we reuse the one already created by WooCommerce.
+	 *
+	 * @var WC_Gateway_Paydo|null
+	 */
+	private $gateway = null;
+
+	/**
+	 * Initialize block integration.
+	 *
+	 * - Loads gateway settings
+	 * - Reuses existing WC_Gateway_Paydo instance
 	 */
 	public function initialize() {
 		$this->settings = get_option('woocommerce_paydo_settings', []);
-		$this->gateway = new WC_Gateway_Paydo();
+
+		// Reuse existing gateway instance (important for consistency)
+		if (function_exists('WC') && WC()->payment_gateways()) {
+			$gateways = WC()->payment_gateways()->payment_gateways();
+			if (isset($gateways[$this->name])) {
+				$this->gateway = $gateways[$this->name];
+			}
+		}
 	}
 
 	/**
-	 * Check if the Paydo payment gateway is active.
+	 * Check whether payment method is active.
 	 *
-	 * @return bool Whether the payment gateway is active.
+	 * @return bool
 	 */
 	public function is_active() {
-		return $this->gateway->is_available();
+		if ($this->gateway) {
+			return $this->gateway->is_available();
+		}
+
+		return !empty($this->settings['enabled']) && $this->settings['enabled'] === 'yes';
 	}
 
 	/**
-	 * Get the script handles required for the payment method.
+	 * Register JS scripts required for Blocks checkout.
 	 *
-	 * @return array Script handles.
+	 * @return string[]
 	 */
 	public function get_payment_method_script_handles() {
 		wp_register_script(
 			'paydo-blocks-integration',
-			PAYDO_PLUGIN_URL . '/js/paydo-blocks-integration.js',
+			PAYDO_PLUGIN_URL . 'js/paydo-blocks-integration.js',
 			[
 				'wc-blocks-registry',
 				'wc-settings',
@@ -58,31 +83,73 @@ final class WC_Gateway_Paydo_Blocks extends AbstractPaymentMethodType {
 				'wp-html-entities',
 				'wp-i18n',
 			],
-			null,
+			'1.0.0',
 			true
 		);
 
-		// Set script translations if available.
+		// Enable translations for JS
 		if (function_exists('wp_set_script_translations')) {
-			wp_set_script_translations('paydo-blocks-integration');
+			wp_set_script_translations('paydo-blocks-integration', 'paydo-woocommerce');
 		}
-
-		wp_localize_script('paydo-blocks-integration', 'paydoBlockData', [
-			'name' => PAYDO_PAYMENT_GATEWAY_NAME,
-		]);
 
 		return ['paydo-blocks-integration'];
 	}
 
 	/**
-	 * Get data for the payment method.
+	 * Data passed to JS (window.wc.wcSettings.getSetting('paydo_data')).
 	 *
-	 * @return array Payment method data.
+	 * @return array
 	 */
 	public function get_payment_method_data() {
+		/**
+		 * All available methods synced from PayDo API.
+		 * Format:
+		 * [
+		 *   identifier => string | [
+		 *     'title' => string,
+		 *     'icon'  => string (optional)
+		 *   ]
+		 * ]
+		 */
+		$available = get_option('paydo_available_methods', []);
+		if (!is_array($available)) {
+			$available = [];
+		}
+
+		/**
+		 * Methods enabled in admin (checkboxes).
+		 */
+		$enabled_methods = isset($this->settings['enabled_methods'])
+			? (array) $this->settings['enabled_methods']
+			: [];
+
+		$enabled_methods = array_values(
+			array_filter(array_map('strval', $enabled_methods))
+		);
+
+		/**
+		 * Whether custom methods selection mode is enabled.
+		 */
+		$methods_mode = !empty($this->settings['methods_mode'])
+			&& $this->settings['methods_mode'] === 'yes';
+
+		/**
+		 * Title & description (prefer live gateway instance).
+		 */
+		$title = $this->gateway
+			? $this->gateway->title
+			: ($this->settings['title'] ?? 'PayDo');
+
+		$desc = $this->gateway
+			? $this->gateway->description
+			: ($this->settings['description'] ?? '');
+
 		return [
-			'title'	      => $this->gateway->title,
-			'description' => $this->gateway->description,
+			'title'             => $title,
+			'description'       => $desc,
+			'methods_mode'      => $methods_mode,
+			'enabled_methods'   => $enabled_methods,
+			'available_methods' => $available,
 		];
 	}
 }

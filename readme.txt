@@ -1,12 +1,12 @@
 ﻿=== PayDo Official ===
 Tags: credit cards, payment methods, paydo, payment gateway
-Version: 2.1.0
-Stable tag: 2.1.0
+Version: 2.2.0
+Stable tag: 2.2.0
 Requires at least: 6.3
-Tested up to: 6.8.2
+Tested up to: 6.9
 Requires PHP: 7.4
 WC requires at least: 8.3
-WC tested up to: 10.0.4
+WC tested up to: 10.4.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -75,3 +75,17 @@ Use below parameters to configure your PayDo project:
 * Added: WordPress 6.8.x Compatibility
 * Added: WooCommerce 10.x.x Compatibility
 * Fixed: Improved behavior when navigating back from the payment page — users are now correctly redirected to the WooCommerce checkout instead of encountering a broken or expired order page.
+
+= 2.2.0 = (February 2, 2026)
+
+* Added: Ability to sync available payment methods directly from PayDo API
+* Added: Manual selection of enabled PayDo payment methods in WooCommerce settings
+* Added: Display of selected PayDo payment methods on Classic Checkout (radio list)
+* Added: Display of selected PayDo payment methods on Checkout Blocks (Gutenberg)
+* Added: Support for passing selected PayDo payment method to the invoice creation API
+* Added: WordPress 6.9.x Compatibility
+* Improved: Admin UI for payment methods selection (searchable checkbox list)
+* Improved: Reuse of existing WooCommerce gateway instance in Blocks integration
+* Improved: Better validation when payment method selection is enabled
+* Fixed: Issue where payment methods were not displayed on the checkout page
+* Fixed: Inconsistent behavior between Classic Checkout and Checkout Blocks
