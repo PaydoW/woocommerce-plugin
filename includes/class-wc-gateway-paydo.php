@@ -3,7 +3,7 @@
  * WooCommerce Paydo Payment Gateway.
  *
  * @extends WC_Payment_Gateway
- * @version 1.0.1
+ * @version 1.1.0
  */
 
 if (!defined('ABSPATH')) {
@@ -90,6 +90,11 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 		$this->description = $this->get_option('description');
 		$this->instructions = $this->get_option('instructions');
 
+		$this->methods_mode = $this->get_option('methods_mode') === 'yes';
+		$this->project_id = $this->get_option('project_id');
+		$this->jwt_token = $this->get_option('jwt_token');
+		$this->enabled_methods = (array) $this->get_option('enabled_methods', []);
+
 		//Actions
 		add_action('paydo-ipn-request', [$this, 'successful_request']);
 		add_action('woocommerce_receipt_' . $this->id, [$this, 'receipt_page']);
@@ -106,6 +111,12 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 
 		//Save options
 		add_action('woocommerce_update_options_payment_gateways_' . $this->id, [$this, 'process_admin_options']);
+
+		add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
+		add_action('wp_ajax_paydo_sync_methods', [$this, 'ajax_sync_methods']);
+		add_action('woocommerce_checkout_process', [$this, 'validate_paydo_method']);
+		add_action('woocommerce_checkout_create_order', [$this, 'save_paydo_method'], 10, 2);
+		add_action('woocommerce_store_api_checkout_update_order_from_request', [$this, 'store_api_save_paydo_method'], 10, 2);
 
 		if (!$this->is_valid_for_use()) {
 			$this->enabled = false;
@@ -163,7 +174,7 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 			$result_url = add_query_arg(
 				[
 					'wc-api' => 'wc_paydo',
-					'paydo'  => 'success',
+					'paydo'	=> 'success',
 					'orderId' => $order_id
 				],
 				$order->get_checkout_order_received_url()
@@ -172,7 +183,7 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 			$fail_path = add_query_arg(
 				[
 					'wc-api' => 'wc_paydo',
-					'paydo'  => 'fail',
+					'paydo'	=> 'fail',
 					'orderId' => $order_id
 				],
 				$order->get_cancel_order_url()
@@ -198,6 +209,13 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 				'failPath' => $fail_path,
 				'signature' => $signature
 			];
+
+			if ($this->methods_mode) {
+				$chosen = $order->get_meta('_paydo_method');
+				if ($chosen) {
+					$arr_data['paymentMethod'] = (int) $chosen;
+				}
+			}
 
 			$response = $this->api_request($arr_data, PAYDO_API_IDENTIFIER);
 			$order->add_meta_data(PAYDO_INVITATE_RESPONSE, $response);
@@ -423,9 +441,9 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 	 * Checks if payment is needed for an order with the Paydo payment gateway
 	 * and disables payment for orders with 'failed' status.
 	 *
-	 * @param bool   $needs_payment		The current value indicating whether payment is needed for the order.
+	 * @param bool	 $needs_payment		The current value indicating whether payment is needed for the order.
 	 * @param object $order				The order object.
-	 * @param array  $valid_order_statuses An array of valid order statuses.
+	 * @param array	$valid_order_statuses An array of valid order statuses.
 	 * @return bool Returns false if payment is not required for orders with 'failed' status and the Paydo payment gateway.
 	 */
 	public function prevent_payment_for_failed_orders( $needs_payment, $order, $valid_order_statuses )
@@ -449,7 +467,7 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 		$order = wc_get_order( $order_id );
 
 		return [
-			'result'   => 'success',
+			'result'	 => 'success',
 			'redirect' => $order->get_checkout_payment_url( true ),
 		];
 	}
@@ -530,7 +548,7 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 	 */
 	public function successful_request( $posted )
 	{
-		$order_id = $posted_data['transaction']['order']['id'] ?? $posted_data['orderId'] ?? $posted_data['order-received'] ?? null;
+		$order_id = $posted['transaction']['order']['id'] ?? $posted['orderId'] ?? $posted['order-received'] ?? null;
 
 		$order = wc_get_order($order_id);
 
@@ -550,7 +568,7 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 	/**
 	 * Make an API request to Paydo.
 	 *
-	 * @param array  $arr_data Data to be sent in the request.
+	 * @param array	$arr_data Data to be sent in the request.
 	 * @param string $retrieved_header Retrieved header.
 	 *
 	 * @return mixed
@@ -619,6 +637,15 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 	public function init_form_fields()
 	{
 		$this->form_fields = include PAYDO_PLUGIN_PATH . '/includes/settings-paydo.php';
+
+		$methods = get_option('paydo_available_methods', []);
+		if (!is_array($methods)) {
+			$methods = [];
+		}
+
+		if (isset($this->form_fields['enabled_methods'])) {
+			$this->form_fields['enabled_methods']['options'] = $methods;
+		}
 	}
 
 	/**
@@ -629,6 +656,67 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 		if ($this->description) {
 			echo wpautop(wptexturize($this->description));
 		}
+
+		if (!$this->methods_mode) {
+			return;
+		}
+
+		$available = get_option('paydo_available_methods', []);
+		if (!is_array($available)) {
+			$available = [];
+		}
+
+		$selected = array_values(array_filter((array) $this->enabled_methods));
+		if (!$selected) {
+			return;
+		}
+
+		echo '<fieldset class="paydo-methods" style="margin-top:12px;">';
+		echo '<p><strong>' . esc_html__('Choose PayDo method:', 'paydo-woocommerce') . '</strong></p>';
+
+		foreach ($selected as $identifier) {
+
+			$item  = $available[$identifier] ?? [];
+			$title = $item['title'] ?? ('Method #' . $identifier);
+			$logo  = $item['logo'] ?? '';
+
+			echo '<label style="
+				display:flex;
+				align-items:center;
+				gap:10px;
+				padding:8px 10px;
+				margin:6px 0;
+				border:1px solid #ddd;
+				border-radius:8px;
+				cursor:pointer;
+			">';
+
+			echo '<input
+				type="radio"
+				name="paydo_method"
+				value="' . esc_attr($identifier) . '"
+				required
+				style="margin:0;"
+			>';
+
+			if ($logo) {
+				echo '<img
+					src="' . esc_url($logo) . '"
+					alt=""
+					style="
+						height:22px;
+						width:auto;
+						object-fit:contain;
+					"
+				>';
+			}
+
+			echo '<span>' . esc_html($title) . '</span>';
+
+			echo '</label>';
+		}
+
+		echo '</fieldset>';
 	}
 
 	/**
@@ -675,5 +763,313 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 		}
 
 		return $block_content;
+	}
+
+	public function enqueue_admin_assets($hook)
+	{
+		if ($hook !== 'woocommerce_page_wc-settings') {
+			return;
+		}
+
+		$section = isset($_GET['section']) ? sanitize_text_field($_GET['section']) : '';
+		if ($section !== $this->id) {
+			return;
+		}
+
+		wp_enqueue_script(
+			'paydo-admin-settings',
+			PAYDO_PLUGIN_URL . 'js/admin-settings.js',
+			['jquery'],
+			'1.0.0',
+			true
+		);
+	}
+
+	public function generate_paydo_sync_methods_html($key, $data)
+	{
+		$nonce = wp_create_nonce('paydo_sync_methods');
+
+		ob_start(); ?>
+		<tr valign="top">
+			<th scope="row" class="titledesc">
+				<label><?php echo esc_html($data['title'] ?? ''); ?></label>
+			</th>
+			<td class="forminp">
+				<button type="button" class="button" id="paydo-sync-methods-btn"
+						data-nonce="<?php echo esc_attr($nonce); ?>">
+					<?php esc_html_e('Sync from PayDo', 'paydo-woocommerce'); ?>
+				</button>
+				<span id="paydo-sync-methods-status" style="margin-left:10px;"></span>
+				<p class="description"><?php echo esc_html($data['description'] ?? ''); ?></p>
+
+				<script>
+				(function(){
+					const btn = document.getElementById('paydo-sync-methods-btn');
+					if(!btn) return;
+
+					btn.addEventListener('click', async function(){
+						const status = document.getElementById('paydo-sync-methods-status');
+						status.textContent = '...';
+
+						const body = new URLSearchParams();
+						body.append('action', 'paydo_sync_methods');
+						body.append('nonce', btn.dataset.nonce);
+
+						try {
+							const res = await fetch(ajaxurl, { method:'POST', credentials:'same-origin', body });
+							const json = await res.json();
+
+							if(!json || !json.success) {
+								status.textContent = (json && json.data && json.data.message) ? json.data.message : 'Error';
+								return;
+							}
+
+							status.textContent = 'OK. Reloading...';
+							window.location.reload();
+						} catch (e) {
+							status.textContent = 'Request failed';
+						}
+					});
+				})();
+				</script>
+			</td>
+		</tr>
+		<?php
+		return ob_get_clean();
+	}
+
+	public function ajax_sync_methods()
+	{
+		if (!current_user_can('manage_woocommerce')) {
+			wp_send_json_error(['message' => 'Forbidden'], 403);
+		}
+
+		check_ajax_referer('paydo_sync_methods', 'nonce');
+
+		$project_id = trim((string) $this->get_option('project_id'));
+		$jwt        = trim((string) $this->get_option('jwt_token'));
+
+		if (!$project_id || !$jwt) {
+			wp_send_json_error(['message' => 'Fill Project ID and JWT token first'], 422);
+		}
+
+		$url = 'https://api.paydo.com/v1/instrument-settings/payment-methods/available-for-application/' . rawurlencode($project_id);
+
+		$resp = wp_remote_get($url, [
+			'timeout' => 30,
+			'headers' => [
+				'Accept'        => 'application/json',
+				'Authorization' => 'Bearer ' . $jwt,
+			],
+		]);
+
+		if (is_wp_error($resp)) {
+			wp_send_json_error(['message' => $resp->get_error_message()], 500);
+		}
+
+		$code = (int) wp_remote_retrieve_response_code($resp);
+		$body = (string) wp_remote_retrieve_body($resp);
+
+		$json = json_decode($body, true);
+		if ($code !== 200 || !is_array($json)) {
+			wp_send_json_error([
+				'message' => 'PayDo API error: invalid response',
+				'http'    => $code,
+				'body'    => mb_substr($body, 0, 1000),
+			], $code ?: 500);
+		}
+
+		$data = $json['data'] ?? [];
+		if (!is_array($data)) {
+			$data = [];
+		}
+
+		$map = [];
+
+		foreach ($data as $row) {
+
+			if (!isset($row['paymentMethod']) || !is_array($row['paymentMethod'])) {
+				continue;
+			}
+
+			$pm = $row['paymentMethod'];
+
+			if (empty($pm['isEnabled'])) {
+				continue;
+			}
+
+			if (empty($pm['identifier']) || empty($pm['title'])) {
+				continue;
+			}
+
+			$map[(string) $pm['identifier']] = [
+				'identifier' => (string) $pm['identifier'],
+				'title' => (string) $pm['title'],
+				'logo'  => (string) $pm['logo'],
+			];
+		}
+
+		if (!$map) {
+			wp_send_json_error([
+				'message' => 'No ENABLED payment methods found in PayDo response.',
+			], 422);
+		}
+
+		asort($map, SORT_NATURAL | SORT_FLAG_CASE);
+
+		update_option('paydo_available_methods', $map, false);
+
+		wp_send_json_success([
+			'count' => count($map),
+		]);
+	}
+
+	public function generate_paydo_methods_checkboxes_html($key, $data)
+	{
+		$field_key = $this->get_field_key($key); // woocommerce_{gatewayid}_enabled_methods
+		$saved     = (array) $this->get_option($key, []);
+		$saved     = array_values(array_unique(array_map('strval', $saved)));
+
+		$options = $data['options'] ?? [];
+		if (!is_array($options)) $options = [];
+
+		ob_start(); ?>
+		<tr valign="top" id="wrap-paydo-methods-search">
+			<th scope="row" class="titledesc">
+				<label><?php echo esc_html($data['title'] ?? ''); ?></label>
+			</th>
+			<td class="forminp">
+
+				<?php if (!empty($data['description'])) : ?>
+					<p class="description"><?php echo esc_html($data['description']); ?></p>
+				<?php endif; ?>
+
+				<div style="margin:8px 0 10px; max-width:520px;">
+					<input type="text"
+						   id="paydo-methods-search"
+						   placeholder="<?php echo esc_attr__('Search method...', 'paydo-woocommerce'); ?>"
+						   style="width:100%; padding:8px 10px; border:1px solid #dcdcde; border-radius:6px;">
+				</div>
+
+				<div id="paydo-methods-box"
+					 style="display:grid; gap:8px; max-height:320px; overflow:auto; padding:10px; border:1px solid #dcdcde; border-radius:8px; background:#fff; max-width:520px;">
+
+					<?php if (!$options) : ?>
+						<div style="opacity:.75;">
+							<?php esc_html_e('No methods loaded yet. Click "Sync from PayDo" above.', 'paydo-woocommerce'); ?>
+						</div>
+					<?php else : ?>
+						<?php foreach ($options as $identifier => $item) :
+							$identifier = (string) $item['identifier'] ?? '';
+							$title = (string) $item['title'] ?? '';
+							$checked = in_array($identifier, $saved, true);
+						?>
+							<label class="paydo-method-row" data-title="<?php echo esc_attr(mb_strtolower($title)); ?>"
+								   style="display:flex; align-items:flex-start; gap:10px; padding:6px 6px; border-radius:6px;">
+								<input type="checkbox"
+									   name="<?php echo esc_attr($field_key); ?>[]"
+									   value="<?php echo esc_attr($identifier); ?>"
+									   <?php checked($checked); ?>
+									   style="margin-top:2px;" />
+								<span>
+									<strong><?php echo esc_html($title); ?></strong>
+									<div style="font-size:12px; opacity:.65;">
+										<?php echo esc_html('#' . $identifier); ?>
+									</div>
+								</span>
+							</label>
+						<?php endforeach; ?>
+					<?php endif; ?>
+				</div>
+
+				<script>
+				(function(){
+					const input = document.getElementById('paydo-methods-search');
+					const box = document.getElementById('paydo-methods-box');
+					if(!input || !box) return;
+
+					const rows = box.querySelectorAll('.paydo-method-row');
+
+					input.addEventListener('input', function(){
+						const q = (input.value || '').trim().toLowerCase();
+						rows.forEach(row => {
+							const t = row.getAttribute('data-title') || '';
+							row.style.display = (!q || t.includes(q)) ? '' : 'none';
+						});
+					});
+				})();
+				</script>
+
+			</td>
+		</tr>
+		<?php
+		return ob_get_clean();
+	}
+
+	public function validate_enabled_methods_field($key, $value)
+	{
+		if (!is_array($value)) {
+			return [];
+		}
+
+		$value = array_map('wc_clean', $value);
+		$value = array_filter($value, static fn($v) => $v !== '');
+
+		return array_values(array_unique($value));
+	}
+
+	public function validate_paydo_method()
+	{
+		if (!$this->methods_mode) {
+			return;
+		}
+
+		if (empty($_POST['payment_method']) || $_POST['payment_method'] !== $this->id) {
+			return;
+		}
+
+		$method = isset($_POST['paydo_method']) ? wc_clean(wp_unslash($_POST['paydo_method'])) : '';
+		$allowed = array_map('strval', (array)$this->enabled_methods);
+
+		if (!$method || !in_array((string)$method, $allowed, true)) {
+			wc_add_notice(__('Please choose a PayDo payment method.', 'paydo-woocommerce'), 'error');
+		}
+	}
+
+	public function save_paydo_method($order, $data)
+	{
+		if ($order->get_payment_method() !== $this->id) {
+			return;
+		}
+
+		$method = isset($_POST['paydo_method']) ? wc_clean(wp_unslash($_POST['paydo_method'])) : '';
+		if ($method) {
+			$order->update_meta_data('_paydo_method', (string)$method);
+		}
+	}
+
+	public function store_api_save_paydo_method($order, $request)
+	{
+		if ($order->get_payment_method() !== $this->id) {
+			return;
+		}
+
+		$payment_data = $request->get_param('payment_data');
+		if (!is_array($payment_data)) {
+			return;
+		}
+
+		$method = '';
+		foreach ($payment_data as $row) {
+			if (!is_array($row)) continue;
+			if (($row['key'] ?? '') === 'paydo_method') {
+				$method = wc_clean((string) ($row['value'] ?? ''));
+				break;
+			}
+		}
+
+		if ($method) {
+			$order->update_meta_data('_paydo_method', $method);
+		}
 	}
 }
