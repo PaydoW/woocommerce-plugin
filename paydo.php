@@ -4,12 +4,12 @@ Plugin Name: PayDo WooCommerce Payment Gateway
 Plugin URI: https://github.com/PaydoW/woocommerce-plugin
 Description: PayDo: Online payment processing service ➦ Accept payments online by 150+ methods from 170+ countries. Payments gateway for Growing Your Business in New Locations and fast online payments
 Author URI: https://paydo.com/
-Version: 2.2.0
+Version: 2.3.0
 Requires at least: 6.3
-Tested up to: 6.9
+Tested up to: 6.9.1
 Requires PHP: 7.4
 WC requires at least: 8.3
-WC tested up to: 10.4.3
+WC tested up to: 10.5.1
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 Domain Path: /languages
@@ -30,7 +30,6 @@ define('PAYDO_PLUGIN_NAME', 'Paydo WooCommerce Payment Gateway');
 define('PAYDO_MIN_PHP_VERSION', '7.4');
 define('PAYDO_MIN_WP_VERSION', '6.3');
 define('PAYDO_MIN_WC_VERSION', '8.3');
-define('PAYDO_IPN_VERSION_V1', 'V1');
 define('PAYDO_IPN_VERSION_V2', 'V2');
 define('PAYDO_HASH_ALGORITHM', 'sha256');
 define('PAYDO_API_IDENTIFIER', 'identifier');
