@@ -3,7 +3,7 @@
  * WooCommerce Paydo Payment Gateway.
  *
  * @extends WC_Payment_Gateway
- * @version 2.0.0
+ * @version 2.1.0
  */
 
 if (!defined('ABSPATH')) {
@@ -189,13 +189,15 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 			$first_name = $order->get_billing_first_name();
 			$last_name	= $order->get_billing_last_name();
 
+			$callback_base_url = site_url('/');
+
 			$result_url = add_query_arg(
 				[
 					'wc-api'		=> 'wc_paydo',
 					'paydo'		 => 'success',
 					'orderId'	 => $order_id,
 				],
-				$order->get_checkout_order_received_url()
+				$callback_base_url
 			);
 
 			$fail_path = add_query_arg(
@@ -204,7 +206,7 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 					'paydo'		 => 'fail',
 					'orderId'	 => $order_id,
 				],
-				$order->get_cancel_order_url()
+				$callback_base_url
 			);
 
 			$arr_data = [
