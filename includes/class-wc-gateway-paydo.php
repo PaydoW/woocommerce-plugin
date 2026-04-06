@@ -3,7 +3,7 @@
  * WooCommerce Paydo Payment Gateway.
  *
  * @extends WC_Payment_Gateway
- * @version 2.1.0
+ * @version 2.2.0
  */
 
 if (!defined('ABSPATH')) {
@@ -67,6 +67,26 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 	 * @var string
 	 */
 	public $instructions;
+
+	/**
+	 * @var bool
+	 */
+	public $methods_mode;
+
+	/**
+	 * @var string
+	 */
+	public $project_id;
+
+	/**
+	 * @var string
+	 */
+	public $jwt_token;
+
+	/**
+	 * @var array
+	 */
+	public $enabled_methods;
 
 	public function __construct()
 	{
@@ -240,7 +260,7 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 			$invoice_id = $this->api_request($arr_data, PAYDO_API_IDENTIFIER);
 
 			if(isset($invoice_id['messages'])) {
-				return '<p>' . __('Request to payment service was sent incorrectly', 'paydo-woocommerce') . '</p><br><p>' . $response['messages'] .'</p>';
+				return '<p>' . __('Request to payment service was sent incorrectly', 'paydo-woocommerce') . '</p><br><p>' . $invoice_id['messages'] .'</p>';
 			}
 
 			$order->update_meta_data(PAYDO_INVITATE_RESPONSE, $invoice_id);
@@ -314,31 +334,6 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 	}
 
 	/**
-	 * Map Paydo status to WooCommerce status.
-	 *
-	 * @param int $paydo_state The Paydo transaction state.
-	 * @return string|null WooCommerce status or null if unknown.
-	 */
-	private function map_status_to_wc($paydo_state)
-	{
-		switch ($paydo_state) {
-			case 1: // New transaction
-			case 4: // Pending transaction
-				return 'pending';
-			case 2: // Accepted, paid successfully
-				return $this->auto_complete === 'yes' ? 'completed' : 'processing';
-			case 3: // Failed
-			case 5: // Failed
-			case 15: // Timeout
-				return 'failed';
-			case 9: // Pre-approved
-				return 'on-hold';
-			default:
-				return null; // Unknown status
-		}
-	}
-
-	/**
 	 * Process the result request (IPN V2).
 	 *
 	 * @param array $posted_data The posted data.
@@ -372,48 +367,60 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 		}
 
 		$stored_invoice_id = trim((string) $order->get_meta(PAYDO_INVITATE_RESPONSE));
-		$ipn_invoice_id		= trim((string) ($posted_data['invoice']['id'] ?? ''));
+		$ipn_invoice_id = trim((string) ($posted_data['invoice']['id'] ?? ''));
 
-		// If invoice mismatched — IGNORE (do not change status, to avoid "order poisoning").
 		if ($ipn_invoice_id !== '' && $stored_invoice_id !== '' && $ipn_invoice_id !== $stored_invoice_id) {
 			$order->add_order_note(__('PayDo IPN invoiceId mismatch. Ignored.', 'paydo-woocommerce'));
 			wp_die('IGNORED', 'IGNORED', 200);
 		}
 
-		$txid = $posted_data['transaction']['txid'] ?? ($posted_data['invoice']['txid'] ?? null);
-		$txid = $txid !== null ? trim((string) $txid) : '';
+		$txid = '';
+		if (isset($posted_data['transaction']['txid'])) {
+			$txid = trim((string) $posted_data['transaction']['txid']);
+		} elseif (isset($posted_data['invoice']['txid'])) {
+			$txid = trim((string) $posted_data['invoice']['txid']);
+		}
 
 		if ($txid !== '') {
 			$stored_txid = trim((string) $order->get_meta('_paydo_txid'));
 
-			// If txid mismatched — IGNORE (do not change status, to avoid "order poisoning").
 			if ($stored_txid !== '' && $stored_txid !== $txid) {
 				$order->add_order_note(__('PayDo IPN txid mismatch. Ignored.', 'paydo-woocommerce'));
 				wp_die('IGNORED', 'IGNORED', 200);
 			}
 
-			// Store txid once.
-			if ($stored_txid === '') {
+			$res = $this->confirm_paydo_order_by_txid($order, $txid, $posted_data);
+
+			if (!empty($res['ok']) && ($res['state'] ?? '') === 'paid' && $stored_txid === '') {
 				$order->update_meta_data('_paydo_txid', $txid);
 				$order->save();
 			}
 
-			// Confirm by txid (server-side).
-			$res = $this->confirm_paydo_order_by_txid($order, $txid);
-
-			// Optional hook for logs / integrations (must not exit!).
 			do_action('paydo-ipn-request', $posted_data);
 
-			if (!empty($res['ok'])) {
-				wp_die('OK', 'OK', 200);
+			$state = (string) ($res['state'] ?? '');
+
+			if (!empty($res['ok']) && $state === 'paid') {
+				wp_die('PAID', 'PAID', 200);
 			}
 
-			wp_die('Check failed', 'Check failed', 200);
+			if (!empty($res['ok']) && $state === 'failed') {
+				wp_die('FAILED', 'FAILED', 200);
+			}
+
+			if (!empty($res['ok']) && $state === 'pending') {
+				wp_die('WAIT', 'WAIT', 200);
+			}
+
+			wp_die('CHECK_FAILED', 'CHECK_FAILED', 200);
 		}
 
-		// No txid: keep calm, wait for later IPN / polling.
 		if (!$order->has_status(['on-hold', 'pending'])) {
-			$order->update_status('on-hold', __('PayDo IPN received without txid. Waiting.', 'paydo-woocommerce'), true);
+			$order->update_status(
+				'on-hold',
+				__('PayDo IPN received without txid. Waiting.', 'paydo-woocommerce'),
+				true
+			);
 		}
 
 		do_action('paydo-ipn-request', $posted_data);
@@ -567,75 +574,7 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 		];
 	}
 
-	private function fetch_transaction_status($txid)
-	{
-		$txid = trim((string) $txid);
-		if ($txid === '') {
-			return ['ok' => false, 'error' => 'Empty txid'];
-		}
-
-		$url = 'https://api.paydo.com/v1/checkout/check-transaction-status/' . rawurlencode($txid);
-
-		$resp = wp_remote_get($url, [
-			'timeout' => 30,
-			'headers' => [
-				'Accept' => 'application/json',
-				'Content-Type' => 'application/json',
-			],
-		]);
-
-		if (is_wp_error($resp)) {
-			return ['ok' => false, 'error' => $resp->get_error_message()];
-		}
-
-		$code = (int) wp_remote_retrieve_response_code($resp);
-		$body = (string) wp_remote_retrieve_body($resp);
-
-		$json = json_decode($body, true);
-		if ($code !== 200 || !is_array($json)) {
-			return [
-				'ok' => false,
-				'error' => 'Invalid PayDo response',
-				'http' => $code,
-				'body' => mb_substr($body, 0, 1000),
-			];
-		}
-
-		$data = $json['data'] ?? [];
-		if (!is_array($data)) {
-			$data = [];
-		}
-
-		if (isset($data['isSuccess']) && !$data['isSuccess']) {
-			return ['ok' => false, 'error' => 'PayDo returned isSuccess=false', 'raw' => $json];
-		}
-
-		$status_raw = $data['status'] ?? null;
-
-		$number_code = null;
-
-		if (is_numeric($status_raw)) {
-			$number_code = (int) $status_raw;
-		} elseif (is_string($status_raw)) {
-			$s = strtolower(trim($status_raw));
-			if ($s === 'new') $number_code = 1;
-			elseif ($s === 'accepted' || $s === 'success') $number_code = 2;
-			elseif ($s === 'pending') $number_code = 4;
-			elseif ($s === 'fail' || $s === 'failed') $number_code = 3;
-		}
-
-		return [
-			'ok' => true,
-			'status_raw' => $status_raw,
-			'status_code' => $number_code,
-			'form' => $data['form'] ?? null,
-			'url'	=> $data['url'] ?? null,
-			'txid' => $data['txid'] ?? $txid,
-			'raw'	=> $json,
-		];
-	}
-
-	private function confirm_paydo_order_by_txid($order, $txid)
+	private function confirm_paydo_order_by_txid($order, $txid, $posted_data = [])
 	{
 		if (!$order instanceof WC_Order) {
 			return ['ok' => false, 'error' => 'Invalid order'];
@@ -645,42 +584,72 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 			return ['ok' => false, 'error' => 'Invalid payment method'];
 		}
 
-		$check = $this->fetch_transaction_status($txid);
-		if (empty($check['ok'])) {
-			return $check;
+		$expected_invoice_id = trim((string) $order->get_meta(PAYDO_INVITATE_RESPONSE));
+		$ipn_invoice_id = trim((string) ($posted_data['invoice']['id'] ?? ''));
+		$ipn_order_id = (string) ($posted_data['transaction']['order']['id'] ?? '');
+		$ipn_state = (int) ($posted_data['transaction']['state'] ?? 0);
+
+		if ($expected_invoice_id === '' || $ipn_invoice_id === '' || $expected_invoice_id !== $ipn_invoice_id) {
+			return ['ok' => false, 'error' => 'Invoice mismatch'];
 		}
 
-		$code = (int) ($check['status_code'] ?? 0);
+		if ($ipn_order_id === '' || $ipn_order_id !== (string) $order->get_id()) {
+			return ['ok' => false, 'error' => 'Order ID mismatch'];
+		}
 
-		// 2 = accepted/success => paid
-		if ($code === 2) {
-			if (!$order->is_paid()) {
-				$order->payment_complete();
+		if ($ipn_state !== 2) {
+			if ($ipn_state === 3 || $ipn_state === 5) {
+				if (!$order->has_status('failed')) {
+					$order->update_status('failed', __('PayDo transaction confirmed as FAILED.', 'paydo-woocommerce'), true);
+				}
+				return ['ok' => true, 'final' => true, 'state' => 'failed'];
 			}
 
-			if ($this->auto_complete === 'yes' && !$order->has_status('completed')) {
-				$order->update_status('completed', __('PayDo transaction confirmed as PAID (polling).', 'paydo-woocommerce'));
-			} elseif (!$order->has_status(['processing', 'completed'])) {
-				$order->update_status('processing', __('PayDo transaction confirmed as PAID (polling).', 'paydo-woocommerce'));
+			if (!$order->has_status(['on-hold', 'pending'])) {
+				$order->update_status('on-hold', __('PayDo transaction pending. Waiting for confirmation.', 'paydo-woocommerce'), true);
 			}
 
-			return ['ok' => true, 'final' => true, 'state' => 'paid', 'check' => $check];
+			return ['ok' => true, 'final' => false, 'state' => 'pending'];
 		}
 
-		// 3/5 = failed
-		if ($code === 3 || $code === 5) {
-			if (!$order->has_status('failed')) {
-				$order->update_status('failed', __('PayDo transaction confirmed as FAILED (polling).', 'paydo-woocommerce'), true);
+		$status_check = $this->fetch_transaction_status($txid);
+		if (empty($status_check['ok'])) {
+			return $status_check;
+		}
+
+		$status_code = (int) ($status_check['status_code'] ?? 0);
+		$status_txid = (string) ($status_check['txid'] ?? '');
+
+		if ($status_code !== 2) {
+			if (in_array($status_code, [3, 5], true)) {
+				if (!$order->has_status('failed')) {
+					$order->update_status('failed', __('PayDo transaction confirmed as FAILED.', 'paydo-woocommerce'), true);
+				}
+				return ['ok' => true, 'final' => true, 'state' => 'failed'];
 			}
-			return ['ok' => true, 'final' => true, 'state' => 'failed', 'check' => $check];
+
+			if (!$order->has_status(['on-hold', 'pending'])) {
+				$order->update_status('on-hold', __('PayDo transaction pending. Waiting for confirmation.', 'paydo-woocommerce'), true);
+			}
+
+			return ['ok' => true, 'final' => false, 'state' => 'pending'];
 		}
 
-		// 1(new) / 4(pending) / unknown => not final
-		if (!$order->has_status(['on-hold', 'pending'])) {
-			$order->update_status('on-hold', __('PayDo transaction pending. Waiting for confirmation.', 'paydo-woocommerce'), true);
+		if ($status_txid === '' || $status_txid !== $txid) {
+			return ['ok' => false, 'error' => 'Transaction identifier mismatch'];
 		}
 
-		return ['ok' => true, 'final' => false, 'state' => 'pending', 'check' => $check];
+		if (!$order->is_paid()) {
+			$order->payment_complete($txid);
+		}
+
+		if ($this->auto_complete === 'yes' && !$order->has_status('completed')) {
+			$order->update_status('completed', __('PayDo transaction confirmed as PAID.', 'paydo-woocommerce'));
+		} elseif (!$order->has_status(['processing', 'completed'])) {
+			$order->update_status('processing', __('PayDo transaction confirmed as PAID.', 'paydo-woocommerce'));
+		}
+
+		return ['ok' => true, 'final' => true, 'state' => 'paid'];
 	}
 
 	/**
@@ -692,13 +661,20 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 	 */
 	public function check_ipn_request_is_valid($posted)
 	{
-		$invoice_id = isset($posted['invoice']['id']) ? trim((string)$posted['invoice']['id']) : '';
-		$tx_id			= isset($posted['invoice']['txid']) ? trim((string)$posted['invoice']['txid']) : '';
-		$order_id	 = isset($posted['transaction']['order']['id']) ? absint($posted['transaction']['order']['id']) : 0;
+		$invoice_id = isset($posted['invoice']['id']) ? trim((string) $posted['invoice']['id']) : '';
+
+		$tx_id = '';
+		if (isset($posted['transaction']['txid'])) {
+			$tx_id = trim((string) $posted['transaction']['txid']);
+		} elseif (isset($posted['invoice']['txid'])) {
+			$tx_id = trim((string) $posted['invoice']['txid']);
+		}
+
+		$order_id = isset($posted['transaction']['order']['id']) ? absint($posted['transaction']['order']['id']) : 0;
 
 		if ($invoice_id === '') return 'Empty invoice id (V2)';
-		if ($tx_id === '')			return 'Empty transaction id (V2)';
-		if (!$order_id)				 return 'Empty order id (V2)';
+		if ($tx_id === '') return 'Empty transaction id (V2)';
+		if (!$order_id) return 'Empty order id (V2)';
 
 		$order = wc_get_order($order_id);
 		if (!$order) return 'Order not found';
@@ -707,7 +683,7 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 			return 'Invalid payment method';
 		}
 
-		$stored_invoice_id = trim((string)$order->get_meta(PAYDO_INVITATE_RESPONSE));
+		$stored_invoice_id = trim((string) $order->get_meta(PAYDO_INVITATE_RESPONSE));
 		if ($stored_invoice_id !== '' && $stored_invoice_id !== $invoice_id) {
 			return 'Invoice id mismatch (V2)';
 		}
@@ -1226,5 +1202,81 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 		if ($method) {
 			$order->update_meta_data('_paydo_method', $method);
 		}
+	}
+
+	private function fetch_transaction_status($txid)
+	{
+		$txid = trim((string) $txid);
+		if ($txid === '') {
+			return ['ok' => false, 'error' => 'Empty txid'];
+		}
+
+		$url = 'https://api.paydo.com/v1/checkout/check-transaction-status/' . rawurlencode($txid);
+
+		$resp = wp_remote_get($url, [
+			'timeout' => 30,
+			'headers' => [
+				'Accept' => 'application/json',
+				'Content-Type' => 'application/json',
+			],
+		]);
+
+		if (is_wp_error($resp)) {
+			return ['ok' => false, 'error' => $resp->get_error_message()];
+		}
+
+		$code = (int) wp_remote_retrieve_response_code($resp);
+		$body = (string) wp_remote_retrieve_body($resp);
+		$json = json_decode($body, true);
+
+		if ($code !== 200 || !is_array($json)) {
+			return [
+				'ok' => false,
+				'error' => 'Invalid PayDo status response',
+				'http' => $code,
+				'body' => mb_substr($body, 0, 1000),
+			];
+		}
+
+		$data = $json['data'] ?? [];
+		if (!is_array($data)) {
+			return ['ok' => false, 'error' => 'Invalid PayDo status data'];
+		}
+
+		$status_raw = $data['status'] ?? null;
+		$status_code = null;
+
+		if (is_numeric($status_raw)) {
+			$status_code = (int) $status_raw;
+		} elseif (is_string($status_raw)) {
+			$s = strtolower(trim($status_raw));
+
+			switch ($s) {
+				case 'new':
+					$status_code = 1;
+					break;
+				case 'accepted':
+				case 'success':
+					$status_code = 2;
+					break;
+				case 'pending':
+					$status_code = 4;
+					break;
+				case 'fail':
+				case 'failed':
+				case 'error':
+					$status_code = 3;
+					break;
+			}
+		}
+
+		return [
+			'ok' => true,
+			'status_code' => $status_code,
+			'status_raw' => $status_raw,
+			'form' => $data['form'] ?? null,
+			'url' => $data['url'] ?? null,
+			'txid' => (string) ($data['txid'] ?? $txid),
+		];
 	}
 }
