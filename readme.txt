@@ -1,12 +1,12 @@
 ﻿=== PayDo Official ===
 Tags: credit cards, payment methods, paydo, payment gateway
-Version: 2.3.0
-Stable tag: 2.3.0
+Version: 2.4.0
+Stable tag: 2.4.0
 Requires at least: 6.3
-Tested up to: 6.9.1
+Tested up to: 6.9.4
 Requires PHP: 7.4
 WC requires at least: 8.3
-WC tested up to: 10.5.1
+WC tested up to: 10.6.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -102,3 +102,18 @@ Use below parameters to configure your PayDo project:
 * Improved: Receipt page logic to prevent duplicate payments and expired invoice reuse
 * Fixed: Issue where users could be redirected back to an already processed or expired invoice
 * Fixed: Potential vulnerability allowing status manipulation without API verification
+
+= 2.4.0 = (April 6, 2026)
+
+* Added: Stronger IPN-to-order binding using invoice ID, WooCommerce order ID, transaction state, and PayDo transaction identifier
+* Added: Server-side validation that PayDo transaction identifier matches the txid received in IPN
+* Improved: txid is now stored only after successful payment confirmation, preventing first-write-wins order poisoning
+* Improved: Payment confirmation flow now requires successful verification through PayDo check-transaction-status before storing txid or completing the order
+* Improved: IPN processing now returns explicit final states (PAID / FAILED / WAIT / CHECK_FAILED) for safer handling
+* Fixed: Sensitive WooCommerce tokens are no longer sent to PayDo in callback URLs
+* Fixed: Removed leakage of order_key from resultUrl
+* Fixed: Removed leakage of WordPress nonce from failPath
+* Fixed: Callback URLs now use safe site-based endpoints with non-sensitive parameters only
+* Security: Reduced risk of forged IPN requests being used to attach arbitrary transaction IDs to WooCommerce orders
+* Security: Reduced exposure of private WooCommerce authentication data in third-party API requests and browser redirects
+
