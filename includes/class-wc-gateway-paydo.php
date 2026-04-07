@@ -590,18 +590,21 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 		$ipn_state = (int) ($posted_data['transaction']['state'] ?? 0);
 
 		if ($expected_invoice_id === '' || $ipn_invoice_id === '' || $expected_invoice_id !== $ipn_invoice_id) {
+			$order->add_order_note(__('PayDo invoice mismatch.', 'paydo-woocommerce'));
 			return ['ok' => false, 'error' => 'Invoice mismatch'];
 		}
 
 		if ($ipn_order_id === '' || $ipn_order_id !== (string) $order->get_id()) {
+			$order->add_order_note(__('PayDo order ID mismatch in IPN.', 'paydo-woocommerce'));
 			return ['ok' => false, 'error' => 'Order ID mismatch'];
 		}
 
 		if ($ipn_state !== 2) {
-			if ($ipn_state === 3 || $ipn_state === 5) {
+			if (in_array($ipn_state, [3, 5], true)) {
 				if (!$order->has_status('failed')) {
 					$order->update_status('failed', __('PayDo transaction confirmed as FAILED.', 'paydo-woocommerce'), true);
 				}
+
 				return ['ok' => true, 'final' => true, 'state' => 'failed'];
 			}
 
@@ -625,6 +628,7 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 				if (!$order->has_status('failed')) {
 					$order->update_status('failed', __('PayDo transaction confirmed as FAILED.', 'paydo-woocommerce'), true);
 				}
+
 				return ['ok' => true, 'final' => true, 'state' => 'failed'];
 			}
 
@@ -636,7 +640,68 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 		}
 
 		if ($status_txid === '' || $status_txid !== $txid) {
+			$order->add_order_note(__('PayDo transaction identifier mismatch.', 'paydo-woocommerce'));
 			return ['ok' => false, 'error' => 'Transaction identifier mismatch'];
+		}
+
+		$invoice_check = $this->fetch_invoice_details($expected_invoice_id);
+		if (empty($invoice_check['ok'])) {
+			return $invoice_check;
+		}
+
+		$expected_order_id = (string) $order->get_id();
+		$expected_amount = number_format((float) $order->get_total(), 4, '.', '');
+		$expected_currency = strtoupper((string) $order->get_currency());
+
+		$invoice_status = (int) ($invoice_check['status'] ?? -1);
+		$invoice_order_id = (string) ($invoice_check['order_id'] ?? '');
+		$invoice_amount = $invoice_check['amount'] !== ''
+			? number_format((float) $invoice_check['amount'], 4, '.', '')
+			: '';
+		$invoice_currency = strtoupper((string) ($invoice_check['currency'] ?? ''));
+
+		if ($invoice_status !== 1) {
+			if (!$order->has_status(['on-hold', 'pending'])) {
+				$order->update_status('on-hold', __('PayDo invoice is not paid yet. Waiting for confirmation.', 'paydo-woocommerce'), true);
+			}
+
+			return ['ok' => true, 'final' => false, 'state' => 'pending'];
+		}
+
+		if ($invoice_order_id === '' || $invoice_order_id !== $expected_order_id) {
+			$order->add_order_note(
+				sprintf(
+					__('PayDo invoice order ID mismatch. Expected %1$s, got %2$s.', 'paydo-woocommerce'),
+					$expected_order_id,
+					$invoice_order_id !== '' ? $invoice_order_id : 'empty'
+				)
+			);
+
+			return ['ok' => false, 'error' => 'Invoice order ID mismatch'];
+		}
+
+		if ($invoice_amount === '' || $invoice_amount !== $expected_amount) {
+			$order->add_order_note(
+				sprintf(
+					__('PayDo invoice amount mismatch. Expected %1$s, got %2$s.', 'paydo-woocommerce'),
+					$expected_amount,
+					$invoice_amount !== '' ? $invoice_amount : 'empty'
+				)
+			);
+
+			return ['ok' => false, 'error' => 'Invoice amount mismatch'];
+		}
+
+		if ($invoice_currency === '' || $invoice_currency !== $expected_currency) {
+			$order->add_order_note(
+				sprintf(
+					__('PayDo invoice currency mismatch. Expected %1$s, got %2$s.', 'paydo-woocommerce'),
+					$expected_currency,
+					$invoice_currency !== '' ? $invoice_currency : 'empty'
+				)
+			);
+
+			return ['ok' => false, 'error' => 'Invoice currency mismatch'];
 		}
 
 		if (!$order->is_paid()) {
@@ -649,7 +714,13 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 			$order->update_status('processing', __('PayDo transaction confirmed as PAID.', 'paydo-woocommerce'));
 		}
 
-		return ['ok' => true, 'final' => true, 'state' => 'paid'];
+		return [
+			'ok' => true,
+			'final' => true,
+			'state' => 'paid',
+			'status_check' => $status_check,
+			'invoice_check' => $invoice_check,
+		];
 	}
 
 	/**
@@ -1277,6 +1348,58 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 			'form' => $data['form'] ?? null,
 			'url' => $data['url'] ?? null,
 			'txid' => (string) ($data['txid'] ?? $txid),
+		];
+	}
+
+	private function fetch_invoice_details($invoice_id)
+	{
+		$invoice_id = trim((string) $invoice_id);
+		if ($invoice_id === '') {
+			return ['ok' => false, 'error' => 'Empty invoice id'];
+		}
+
+		$url = 'https://api.paydo.com/v1/invoices/' . rawurlencode($invoice_id);
+
+		$resp = wp_remote_get($url, [
+			'timeout' => 30,
+			'headers' => [
+				'Accept' => 'application/json',
+				'Content-Type' => 'application/json',
+			],
+		]);
+
+		if (is_wp_error($resp)) {
+			return ['ok' => false, 'error' => $resp->get_error_message()];
+		}
+
+		$code = (int) wp_remote_retrieve_response_code($resp);
+		$body = (string) wp_remote_retrieve_body($resp);
+		$json = json_decode($body, true);
+
+		if ($code !== 200 || !is_array($json)) {
+			return [
+				'ok' => false,
+				'error' => 'Invalid PayDo invoice response',
+				'http' => $code,
+				'body' => mb_substr($body, 0, 1000),
+			];
+		}
+
+		$data = $json['data'] ?? [];
+		if (!is_array($data)) {
+			return ['ok' => false, 'error' => 'Invalid PayDo invoice data'];
+		}
+
+		return [
+			'ok' => true,
+			'invoice_id' => (string) ($data['identifier'] ?? $invoice_id),
+			'status' => isset($data['status']) ? (int) $data['status'] : null,
+			'amount' => isset($data['amount']) ? (string) $data['amount'] : '',
+			'currency' => isset($data['currency']) ? (string) $data['currency'] : '',
+			'order_id' => (string) ($data['orderIdentifier'] ?? ''),
+			'result_url' => isset($data['resultUrl']) ? (string) $data['resultUrl'] : '',
+			'fail_url' => isset($data['failUrl']) ? (string) $data['failUrl'] : '',
+			'raw' => $json,
 		];
 	}
 }
