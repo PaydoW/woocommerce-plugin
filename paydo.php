@@ -4,7 +4,7 @@ Plugin Name: PayDo WooCommerce Payment Gateway
 Plugin URI: https://github.com/PaydoW/woocommerce-plugin
 Description: PayDo: Online payment processing service ➦ Accept payments online by 150+ methods from 170+ countries. Payments gateway for Growing Your Business in New Locations and fast online payments
 Author URI: https://paydo.com/
-Version: 2.4.0
+Version: 2.5.0
 Requires at least: 6.3
 Tested up to: 6.9.4
 Requires PHP: 7.4

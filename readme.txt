@@ -1,7 +1,7 @@
 ﻿=== PayDo Official ===
 Tags: credit cards, payment methods, paydo, payment gateway
-Version: 2.4.0
-Stable tag: 2.4.0
+Version: 2.5.0
+Stable tag: 2.5.0
 Requires at least: 6.3
 Tested up to: 6.9.4
 Requires PHP: 7.4
@@ -116,4 +116,11 @@ Use below parameters to configure your PayDo project:
 * Fixed: Callback URLs now use safe site-based endpoints with non-sensitive parameters only
 * Security: Reduced risk of forged IPN requests being used to attach arbitrary transaction IDs to WooCommerce orders
 * Security: Reduced exposure of private WooCommerce authentication data in third-party API requests and browser redirects
+
+= 2.5.0 = (April 7, 2026)
+
+* Added: Verification of invoice data via PayDo Get Invoice endpoint
+* Added: Validation of invoice amount against WooCommerce order total
+* Added: Validation of invoice currency against WooCommerce order currency
+* Improved: Payment confirmation now additionally checks invoice data before marking order as paid
 
