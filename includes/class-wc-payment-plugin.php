@@ -32,6 +32,28 @@ class Paydo_WC_Payment_Plugin {
 		add_filter('plugin_action_links_' . PAYDO_PLUGIN_BASENAME, [$this, 'add_settings_link']);
 		add_filter('woocommerce_payment_gateways', [$this, 'add_paydo_gateway']);
 		add_action('woocommerce_blocks_loaded', [$this, 'register_payment_method_type']);
+		add_action('paydo_verify_payment', [$this, 'handle_payment_verification'], 10, 3);
+	}
+
+	/**
+	 * Route an asynchronous verification job to the configured PayDo gateway.
+	 *
+	 * Registering the action in the plugin bootstrap ensures Action Scheduler can
+	 * execute it even when WooCommerce has not instantiated gateways beforehand.
+	 *
+	 * @param int    $order_id WooCommerce order ID.
+	 * @param string $txid     PayDo transaction ID.
+	 * @param int    $attempt  Verification attempt number.
+	 */
+	public function handle_payment_verification($order_id, $txid, $attempt = 1) {
+		if (!function_exists('WC') || !WC()->payment_gateways()) {
+			return;
+		}
+
+		$gateways = WC()->payment_gateways()->payment_gateways();
+		if (isset($gateways[PAYDO_PAYMENT_GATEWAY_NAME]) && $gateways[PAYDO_PAYMENT_GATEWAY_NAME] instanceof WC_Gateway_Paydo) {
+			$gateways[PAYDO_PAYMENT_GATEWAY_NAME]->retry_payment_verification($order_id, $txid, $attempt);
+		}
 	}
 
 	/**
