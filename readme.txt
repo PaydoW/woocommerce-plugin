@@ -1,12 +1,12 @@
 ﻿=== PayDo Official ===
 Tags: credit cards, payment methods, paydo, payment gateway
-Version: 2.5.0
-Stable tag: 2.5.0
+Version: 2.5.1
+Stable tag: 2.5.1
 Requires at least: 6.3
-Tested up to: 6.9.4
+Tested up to: 7.0.2
 Requires PHP: 7.4
 WC requires at least: 8.3
-WC tested up to: 10.6.2
+WC tested up to: 10.9.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -124,3 +124,14 @@ Use below parameters to configure your PayDo project:
 * Added: Validation of invoice currency against WooCommerce order currency
 * Improved: Payment confirmation now additionally checks invoice data before marking order as paid
 
+= 2.5.1 = (August 4, 2026)
+
+* Added: Delayed server-side payment verification retries when PayDo initially reports a pending transaction
+* Added: Diagnostic logging with plugin version and verification scheduling state
+* Improved: Debug logging is disabled by default and can be enabled explicitly in gateway settings
+* Improved: Transaction identifier validation now uses transactionIdentifier returned by PayDo API
+* Improved: Paid invoices can confirm an order when internet acquiring keeps check-transaction-status pending
+* Added: Strict transactionIdentifier matching between IPN, transaction status, and invoice responses
+* Fixed: Orders remaining pending when PayDo updates the transaction shortly after the IPN callback
+* Fixed: Broken PayDo logo caused by treating the PNG asset as a text file
+* Security: Invoice ID, transaction ID, order ID, amount, and currency must all match before payment completion

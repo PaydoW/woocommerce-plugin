@@ -58,6 +58,14 @@ return [
 		'default' => 'no',
 	],
 
+	'debug_logging' => [
+		'title'       => __('Debug logging', 'paydo-woocommerce'),
+		'type'        => 'checkbox',
+		'label'       => __('Write detailed PayDo diagnostics to WooCommerce logs', 'paydo-woocommerce'),
+		'description' => __('Credentials and customer personal data are redacted. Disable after testing is complete.', 'paydo-woocommerce'),
+		'default'     => 'no',
+	],
+
 	// --- Methods mode ---
 	'methods_mode' => [
 		'title'       => __('Payment methods selection', 'paydo-woocommerce'),

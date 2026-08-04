@@ -22,7 +22,7 @@ const Content = (props) => {
 				type: props.emitResponse.responseTypes.SUCCESS,
 				meta: {
 					paymentMethodData: {
-						paydo_method: selected || '',
+						paydo_method: methodsMode ? (selected || '') : '',
 					},
 				},
 			};
