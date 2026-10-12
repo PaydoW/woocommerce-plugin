@@ -73,6 +73,14 @@ final class WC_Gateway_Paydo_Blocks extends AbstractPaymentMethodType {
 	 * @return string[]
 	 */
 	public function get_payment_method_script_handles() {
+		wp_register_style(
+			'paydo-blocks-integration',
+			PAYDO_PLUGIN_URL . 'css/paydo-blocks-integration.css',
+			[],
+			PAYDO_PLUGIN_VERSION
+		);
+		wp_enqueue_style('paydo-blocks-integration');
+
 		wp_register_script(
 			'paydo-blocks-integration',
 			PAYDO_PLUGIN_URL . 'js/paydo-blocks-integration.js',
@@ -83,7 +91,7 @@ final class WC_Gateway_Paydo_Blocks extends AbstractPaymentMethodType {
 				'wp-html-entities',
 				'wp-i18n',
 			],
-			'1.0.0',
+			PAYDO_PLUGIN_VERSION,
 			true
 		);
 

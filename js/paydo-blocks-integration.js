@@ -1,7 +1,7 @@
 const settings = window.wc?.wcSettings?.getSetting('paydo_data', {}) || {};
 const { decodeEntities } = window.wp.htmlEntities;
 const { __ } = window.wp.i18n;
-const { createElement, useState, useEffect, Fragment } = window.wp.element;
+const { createElement, useState, useEffect, useRef } = window.wp.element;
 
 const label = decodeEntities(settings.title) || __('PayDo', 'paydo-woocommerce');
 
@@ -11,8 +11,31 @@ const enabled = (settings.enabled_methods || []).map(String).filter(Boolean);
 
 const Content = (props) => {
 	const description = decodeEntities(settings.description || '');
+	const contentRef = useRef(null);
 
 	const [selected, setSelected] = useState(enabled[0] || '');
+
+	useEffect(() => {
+		const content = contentRef.current;
+		const option = content?.closest('.wc-block-components-radio-control-accordion-option');
+
+		if (!option) return;
+
+		option.classList.add('paydo-blocks-payment-option');
+
+		const control = option.closest('.wc-block-components-radio-control--highlight-checked');
+		const isOnlyPaymentOption = control
+			&& control.querySelectorAll('.wc-block-components-radio-control-accordion-option').length === 1;
+
+		if (isOnlyPaymentOption) {
+			control.classList.add('paydo-blocks-payment-control--single-option');
+		}
+
+		return () => {
+			option.classList.remove('paydo-blocks-payment-option');
+			control?.classList.remove('paydo-blocks-payment-control--single-option');
+		};
+	}, []);
 
 	useEffect(() => {
 		if (!props || !props.eventRegistration || !props.emitResponse) return;
@@ -53,15 +76,15 @@ const Content = (props) => {
 
 	if (!methodsMode || !list.length) {
 		return createElement(
-			Fragment,
-			null,
+			'div',
+			{ ref: contentRef, className: 'paydo-blocks-payment-content' },
 			description ? createElement('p', null, description) : null
 		);
 	}
 
 	return createElement(
-		Fragment,
-		null,
+		'div',
+		{ ref: contentRef, className: 'paydo-blocks-payment-content' },
 		description ? createElement('p', null, description) : null,
 
 		createElement(

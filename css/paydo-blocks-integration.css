@@ -1,0 +1,14 @@
+.wc-block-components-radio-control--highlight-checked
+	.paydo-blocks-payment-option.wc-block-components-radio-control-accordion-option--checked-option-highlighted {
+	box-shadow: none !important;
+}
+
+.wc-block-components-radio-control--highlight-checked.paydo-blocks-payment-control--single-option::after {
+	border: 0 !important;
+}
+
+.paydo-blocks-payment-content input[type='radio']:focus,
+.paydo-blocks-payment-content input[type='radio']:focus-visible {
+	outline: 0 !important;
+	box-shadow: none !important;
+}
