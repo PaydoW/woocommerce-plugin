@@ -104,7 +104,7 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 
 	public function __construct()
 	{
-		$this->api_url = 'https://api.paydo.com/v1/invoices/create';
+		$this->api_url = 'https://api.paydo.com/v3/invoices/create';
 
 		$this->id = PAYDO_PAYMENT_GATEWAY_NAME;
 		$this->icon = apply_filters('woocommerce_paydo_icon', PAYDO_PLUGIN_URL . 'logo.png');
@@ -1168,33 +1168,10 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 		}
 
 		if ($ipn_state !== 2) {
-			$this->log_event('notice', 'confirmation.ipn_not_accepted', [
+			$this->log_event('notice', 'confirmation.ipn_requires_api_verification', [
 				'order_id' => $order->get_id(),
 				'ipn_state' => $ipn_state,
 			]);
-			if (in_array($ipn_state, [3, 5], true)) {
-				if (!$order->has_status('failed')) {
-					$order->update_status('failed', __('PayDo transaction confirmed as FAILED.', 'paydo-woocommerce'), true);
-				}
-				$this->log_event('warning', 'confirmation.failed_from_ipn', [
-					'order_id' => $order->get_id(),
-					'ipn_state' => $ipn_state,
-					'order_status' => $order->get_status(),
-				]);
-
-				return ['ok' => true, 'final' => true, 'state' => 'failed'];
-			}
-
-			if (!$order->has_status(['on-hold', 'pending'])) {
-				$order->update_status('on-hold', __('PayDo transaction pending. Waiting for confirmation.', 'paydo-woocommerce'), true);
-			}
-			$this->log_event('notice', 'confirmation.pending_from_ipn', [
-				'order_id' => $order->get_id(),
-				'ipn_state' => $ipn_state,
-				'order_status' => $order->get_status(),
-			]);
-
-			return ['ok' => true, 'final' => false, 'state' => 'pending', 'retryable' => true];
 		}
 
 		$this->log_event('info', 'confirmation.transaction_check_started', [
@@ -1224,27 +1201,9 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 			return ['ok' => false, 'error' => 'Transaction identifier mismatch'];
 		}
 
-		if (in_array($status_code, [3, 5], true)) {
-			$this->log_event('notice', 'confirmation.transaction_not_accepted', [
-				'order_id' => $order->get_id(),
-				'txid' => $txid,
-				'status_code' => $status_code,
-				'status_raw' => $status_check['status_raw'] ?? null,
-			]);
-			if (!$order->has_status('failed')) {
-				$order->update_status('failed', __('PayDo transaction confirmed as FAILED.', 'paydo-woocommerce'), true);
-			}
-			$this->log_event('warning', 'confirmation.failed_from_transaction_api', [
-				'order_id' => $order->get_id(),
-				'status_code' => $status_code,
-				'order_status' => $order->get_status(),
-			]);
-
-			return ['ok' => true, 'final' => true, 'state' => 'failed'];
-		}
-
 		$transaction_is_accepted = $status_code === 2;
-		$transaction_allows_invoice_check = $transaction_is_accepted || in_array($status_code, [1, 4], true);
+		$transaction_is_failed = in_array($status_code, [3, 5], true);
+		$transaction_allows_invoice_check = in_array($status_code, [1, 2, 3, 4, 5], true);
 
 		if (!$transaction_allows_invoice_check) {
 			$this->log_event('error', 'confirmation.transaction_status_unknown', [
@@ -1255,7 +1214,14 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 			return ['ok' => false, 'error' => 'Unknown PayDo transaction status', 'state' => 'pending', 'retryable' => true];
 		}
 
-		if (!$transaction_is_accepted) {
+		if ($transaction_is_failed) {
+			$this->log_event('notice', 'confirmation.transaction_failed_checking_invoice', [
+				'order_id' => $order->get_id(),
+				'txid' => $txid,
+				'status_code' => $status_code,
+				'status_raw' => $status_check['status_raw'] ?? null,
+			]);
+		} elseif (!$transaction_is_accepted) {
 			$this->log_event('notice', 'confirmation.transaction_pending_checking_invoice', [
 				'order_id' => $order->get_id(),
 				'txid' => $txid,
@@ -1301,20 +1267,7 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 			return ['ok' => false, 'error' => 'Invoice identifier mismatch'];
 		}
 
-		if ($invoice_status !== 1) {
-			$this->log_event('notice', 'confirmation.invoice_not_paid', [
-				'order_id' => $order->get_id(),
-				'invoice_id' => $expected_invoice_id,
-				'invoice_status' => $invoice_status,
-			]);
-			if (!$order->has_status(['on-hold', 'pending'])) {
-				$order->update_status('on-hold', __('PayDo invoice is not paid yet. Waiting for confirmation.', 'paydo-woocommerce'), true);
-			}
-
-			return ['ok' => true, 'final' => false, 'state' => 'pending', 'retryable' => true];
-		}
-
-		if ($invoice_txid === '' || $invoice_txid !== $txid) {
+		if ($invoice_txid !== '' && $invoice_txid !== $txid) {
 			$this->log_event('error', 'confirmation.invoice_transaction_id_mismatch', [
 				'order_id' => $order->get_id(),
 				'expected_txid' => $txid,
@@ -1373,6 +1326,61 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 			);
 
 			return ['ok' => false, 'error' => 'Invoice currency mismatch'];
+		}
+
+		$invoice_is_paid = $invoice_status === 1;
+		$invoice_is_failed = in_array($invoice_status, [3, 5], true);
+
+		if ($invoice_txid === '') {
+			$this->log_event('notice', 'confirmation.invoice_transaction_id_pending', [
+				'order_id' => $order->get_id(),
+				'invoice_id' => $expected_invoice_id,
+				'invoice_status' => $invoice_status,
+			]);
+
+			if (!$order->has_status(['on-hold', 'pending'])) {
+				$order->update_status('on-hold', __('PayDo invoice has no transaction identifier yet. Waiting for confirmation.', 'paydo-woocommerce'), true);
+			}
+
+			return ['ok' => true, 'final' => false, 'state' => 'pending', 'retryable' => true];
+		}
+
+		if ($invoice_is_failed) {
+			if (!$order->has_status('failed')) {
+				$order->update_status('failed', __('PayDo transaction independently confirmed as FAILED by invoice API.', 'paydo-woocommerce'), true);
+			}
+
+			$this->log_event('warning', 'confirmation.failed_from_verified_invoice_api', [
+				'order_id' => $order->get_id(),
+				'invoice_id' => $invoice_id,
+				'txid' => $txid,
+				'ipn_state' => $ipn_state,
+				'transaction_status_code' => $status_code,
+				'invoice_status' => $invoice_status,
+				'order_status' => $order->get_status(),
+			]);
+
+			return [
+				'ok' => true,
+				'final' => true,
+				'state' => 'failed',
+				'status_check' => $status_check,
+				'invoice_check' => $invoice_check,
+			];
+		}
+
+		if (!$invoice_is_paid) {
+			$this->log_event('notice', 'confirmation.invoice_not_paid', [
+				'order_id' => $order->get_id(),
+				'invoice_id' => $expected_invoice_id,
+				'invoice_status' => $invoice_status,
+				'transaction_status_code' => $status_code,
+			]);
+			if (!$order->has_status(['on-hold', 'pending'])) {
+				$order->update_status('on-hold', __('PayDo invoice is not paid yet. Waiting for confirmation.', 'paydo-woocommerce'), true);
+			}
+
+			return ['ok' => true, 'final' => false, 'state' => 'pending', 'retryable' => true];
 		}
 
 		if (!$transaction_is_accepted) {
@@ -1520,13 +1528,29 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 		]);
 
 		if ($retrieved_header !== '') {
-			$header = wp_remote_retrieve_header($response, $retrieved_header);
-			$this->log_event(!empty($header) ? 'info' : 'error', 'api.invoice_create.header', [
+			$value = wp_remote_retrieve_header($response, $retrieved_header);
+			$source = !empty($value) ? 'header' : '';
+
+			// Invoice API v3 returns the created UUID in the JSON data field.
+			// Keep the response-header fallback for compatibility with older APIs.
+			if (empty($value) && $retrieved_header === PAYDO_API_IDENTIFIER && is_array($decoded_body)) {
+				$data = $decoded_body['data'] ?? null;
+				if (is_string($data) && trim($data) !== '') {
+					$value = trim($data);
+					$source = 'body.data';
+				} elseif (is_array($data) && !empty($data[PAYDO_API_IDENTIFIER])) {
+					$value = (string) $data[PAYDO_API_IDENTIFIER];
+					$source = 'body.data.identifier';
+				}
+			}
+
+			$this->log_event(!empty($value) ? 'info' : 'error', 'api.invoice_create.identifier', [
 				'http_status' => $http_code,
-				'header_name' => $retrieved_header,
-				'header_value' => !empty($header) ? (string) $header : '',
+				'response_field' => $retrieved_header,
+				'value' => !empty($value) ? (string) $value : '',
+				'source' => $source,
 			]);
-			return !empty($header) ? $header : null;
+			return !empty($value) ? (string) $value : null;
 		}
 
 		return $decoded_body;
@@ -1796,7 +1820,7 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 			wp_send_json_error(['message' => 'Fill Project ID and JWT token first'], 422);
 		}
 
-		$url = 'https://api.paydo.com/v1/instrument-settings/payment-methods/available-for-application/' . rawurlencode($project_id);
+		$url = 'https://api.paydo.com/v3/instrument-settings/payment-methods/available-for-application/' . rawurlencode($project_id);
 		$this->log_event('info', 'methods.sync_request', ['url' => $url, 'project_id' => $project_id]);
 
 		$resp = wp_remote_get($url, [
@@ -1838,11 +1862,15 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 
 		foreach ($data as $row) {
 
-			if (!isset($row['paymentMethod']) || !is_array($row['paymentMethod'])) {
+			if (!is_array($row)) {
 				continue;
 			}
 
-			$pm = $row['paymentMethod'];
+			// The production response currently wraps the method in paymentMethod,
+			// while the v3 documentation shows method fields directly in data[].
+			$pm = isset($row['paymentMethod']) && is_array($row['paymentMethod'])
+				? $row['paymentMethod']
+				: $row;
 
 			if (empty($pm['isEnabled'])) {
 				continue;
@@ -1855,7 +1883,7 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 			$map[(string) $pm['identifier']] = [
 				'identifier' => (string) $pm['identifier'],
 				'title' => (string) $pm['title'],
-				'logo'	=> (string) $pm['logo'],
+				'logo'	=> (string) ($pm['logo'] ?? ''),
 			];
 		}
 
@@ -1865,9 +1893,12 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 			], 422);
 		}
 
-		asort($map, SORT_NATURAL | SORT_FLAG_CASE);
+		uasort($map, static function ($left, $right) {
+			return strnatcasecmp((string) ($left['title'] ?? ''), (string) ($right['title'] ?? ''));
+		});
 
 		update_option('paydo_available_methods', $map, false);
+
 		$this->log_event('info', 'methods.sync_completed', [
 			'count' => count($map),
 			'identifiers' => array_keys($map),
@@ -2067,7 +2098,7 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 			return ['ok' => false, 'error' => 'Empty txid'];
 		}
 
-		$url = 'https://api.paydo.com/v1/checkout/check-transaction-status/' . rawurlencode($txid);
+		$url = 'https://api.paydo.com/v3/checkout/check-transaction-status/' . rawurlencode($txid);
 		$this->log_event('info', 'api.transaction_status.request', ['url' => $url, 'txid' => $txid]);
 
 		$resp = wp_remote_get($url, [
@@ -2161,7 +2192,7 @@ class WC_Gateway_Paydo extends WC_Payment_Gateway {
 			return ['ok' => false, 'error' => 'Empty invoice id'];
 		}
 
-		$url = 'https://api.paydo.com/v1/invoices/' . rawurlencode($invoice_id);
+		$url = 'https://api.paydo.com/v3/invoices/' . rawurlencode($invoice_id);
 		$this->log_event('info', 'api.invoice_details.request', ['url' => $url, 'invoice_id' => $invoice_id]);
 
 		$resp = wp_remote_get($url, [

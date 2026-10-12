@@ -93,14 +93,14 @@ return [
 	'sync_methods' => [
 		'title'       => __('Sync payment methods', 'paydo-woocommerce'),
 		'type'        => 'paydo_sync_methods',
-		'description' => __('Fetch available methods from PayDo and update list below.', 'paydo-woocommerce'),
+		'description' => __('Fetch available methods from PayDo and update the list below.', 'paydo-woocommerce'),
 	],
 
 	// checkbox list (custom field type)
 	'enabled_methods' => [
 		'title'       => __('Enabled PayDo methods', 'paydo-woocommerce'),
 		'type'        => 'paydo_methods_checkboxes',
-		'description' => __('Select which methods can be used on checkout.', 'paydo-woocommerce'),
+		'description' => __('Select which methods can be used on checkout. Synced methods are not enabled automatically.', 'paydo-woocommerce'),
 		'default'     => [],
 		'options'     => [], // fill in init_form_fields()
 	],
